@@ -27,8 +27,14 @@
     ]
   },
   "dependencies": {
+    "@metamask/multichain-provider": "~0.22.1",
     "@metamask/providers": "^9.0.0",
+    "@walletconnect/client": "^1.7.8",
+    "@walletconnect/utils": "^1.7.8",
+    "buffer": "~6.0.3",
+    "ethers": "~5.7.1",
     "react": "^18.2.0",
+    "react-async-hook": "^3.6.2",
     "react-dom": "^18.2.0",
     "react-is": "^18.2.0",
     "react-scripts": "5.0.1",

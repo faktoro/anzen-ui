@@ -1,10 +1,7 @@
-import { useState } from 'react';
 import styled, { ThemeProvider } from 'styled-components';
-import { Footer, Header, Home } from './components';
+import { Home } from './components';
+import { dark, GlobalStyle } from './config/theme';
 import { MetaMaskProvider } from './hooks';
-
-import { light, dark, GlobalStyle } from './config/theme';
-import { setLocalStorage, getThemePreference } from './utils';
 
 const Wrapper = styled.div`
   display: flex;
@@ -15,21 +12,12 @@ const Wrapper = styled.div`
 `;
 
 function App() {
-  const [darkTheme, setDarkTheme] = useState(getThemePreference());
-
-  const toggleTheme = () => {
-    setLocalStorage('theme', darkTheme ? 'light' : 'dark');
-    setDarkTheme(!darkTheme);
-  };
-
   return (
-    <ThemeProvider theme={darkTheme ? dark : light}>
+    <ThemeProvider theme={dark}>
       <MetaMaskProvider>
         <GlobalStyle />
         <Wrapper>
-          <Header handleToggleClick={toggleTheme} />
           <Home />
-          <Footer />
         </Wrapper>
       </MetaMaskProvider>
     </ThemeProvider>

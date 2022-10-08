@@ -1,19 +1,30 @@
-import { useContext } from 'react';
+import React, { useContext, useState } from 'react';
+import { useAsync } from 'react-async-hook';
 import styled from 'styled-components';
 import { MetamaskActions, MetaMaskContext } from '../hooks';
+import { WalletInfo } from '../types';
 import {
   connectSnap,
+  createWallet,
+  fetchWallets,
+  getChainId,
+  getConnectedAccount,
   getSnap,
-  sendHello,
+  NETWORKS,
+  shortenedAddress,
   shouldDisplayReconnectButton,
+  watchChainId,
+  watchConnectedAccount,
 } from '../utils';
+import { initWalletConnect, setWcActiveWallet } from '../utils/walletConnect';
 import {
   ConnectButton,
+  GenericButton,
   InstallFlaskButton,
   ReconnectButton,
-  SendHelloButton,
 } from './Buttons';
 import { Card } from './Card';
+import { Header } from './Header';
 
 const Container = styled.div`
   display: flex;
@@ -62,25 +73,6 @@ const CardContainer = styled.div`
   margin-top: 1.5rem;
 `;
 
-const Notice = styled.div`
-  background-color: ${({ theme }) => theme.colors.background.alternative};
-  border: 1px solid ${({ theme }) => theme.colors.border.default};
-  color: ${({ theme }) => theme.colors.text.alternative};
-  border-radius: ${({ theme }) => theme.radii.default};
-  padding: 2.4rem;
-  margin-top: 2.4rem;
-  max-width: 60rem;
-  width: 100%;
-
-  & > * {
-    margin: 0;
-  }
-  ${({ theme }) => theme.mediaQueries.small} {
-    margin-top: 1.2rem;
-    padding: 1.6rem;
-  }
-`;
-
 const ErrorMessage = styled.div`
   background-color: ${({ theme }) => theme.colors.error.muted};
   border: 1px solid ${({ theme }) => theme.colors.error.default};
@@ -101,6 +93,35 @@ const ErrorMessage = styled.div`
 
 export const Home = () => {
   const [state, dispatch] = useContext(MetaMaskContext);
+  const [connectedAccount, setConnectedAccount] = useState<string | null>(null);
+  const [chainId, setChainId] = useState<string | null>(null);
+  const [wallets, setWallets] = useState<WalletInfo[]>([]);
+  const [wcUri, setWcUri] = useState('');
+  const [activeWallet, setActiveWallet] = useState<WalletInfo | null>(null);
+
+  function updateActiveWallet(wallet: WalletInfo) {
+    setWcActiveWallet(wallet);
+    setActiveWallet(wallet);
+  }
+
+  useAsync(async () => {
+    setConnectedAccount(await getConnectedAccount());
+    watchConnectedAccount(setConnectedAccount);
+  }, []);
+
+  useAsync(async () => {
+    setChainId(await getChainId());
+    watchChainId(setChainId);
+  }, []);
+
+  async function updateSnapWallets() {
+    const fetchedWallets = await fetchWallets();
+    setWallets(fetchedWallets);
+    if (!activeWallet) {
+      updateActiveWallet(fetchedWallets[0] ?? null);
+    }
+  }
+  useAsync(updateSnapWallets, []);
 
   const handleConnectClick = async () => {
     try {
@@ -117,96 +138,173 @@ export const Home = () => {
     }
   };
 
-  const handleSendHelloClick = async () => {
+  async function handleCreateWallet() {
     try {
-      await sendHello();
+      if (!connectedAccount || !chainId) {
+        return;
+      }
+      await createWallet(connectedAccount, chainId);
+      await updateSnapWallets();
     } catch (e) {
       console.error(e);
       dispatch({ type: MetamaskActions.SetError, payload: e });
     }
-  };
+  }
+
+  async function connectWithUri() {
+    await initWalletConnect(wcUri);
+  }
 
   return (
-    <Container>
-      <Heading>
-        Welcome to <Span>template-snap</Span>
-      </Heading>
-      <Subtitle>
-        Get started by editing <code>src/index.ts</code>
-      </Subtitle>
-      <CardContainer>
-        {state.error && (
-          <ErrorMessage>
-            <b>An error happened:</b> {state.error.message}
-          </ErrorMessage>
-        )}
-        {!state.isFlask && (
+    <>
+      <Header connectedAddress={connectedAccount} />
+      <Container>
+        <Heading>
+          Welcome to <Span>Faktoro</Span>
+        </Heading>
+        <Subtitle>Your crypto wallet with 2-Factor Authentication.</Subtitle>
+        {wallets.length > 0 && (
           <Card
-            content={{
-              title: 'Install',
-              description:
-                'Snaps is pre-release software only available in MetaMask Flask, a canary distribution for developers with access to upcoming features.',
-              button: <InstallFlaskButton />,
-            }}
             fullWidth
+            content={{
+              title: 'Your Wallets',
+              description: 'Chose your active wallet',
+              button: (
+                <>
+                  {wallets.map((wallet) => (
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                      }}
+                      key={`${wallet.owner}-${wallet.walletAddress}`}
+                    >
+                      <input
+                        type="radio"
+                        name="active-wallet"
+                        checked={
+                          activeWallet?.walletAddress ===
+                            wallet.walletAddress &&
+                          activeWallet.owner === wallet.owner &&
+                          activeWallet.chainId === wallet.chainId
+                        }
+                        onChange={() => {
+                          updateActiveWallet(wallet);
+                        }}
+                      />
+                      <div style={{ marginLeft: 10 }}>
+                        <p>
+                          <b>Owner: </b>
+                          {shortenedAddress(wallet.owner)}
+                        </p>
+                        <p>
+                          <b>Wallet address: </b>
+                          {shortenedAddress(wallet.walletAddress)}
+                        </p>
+                        <p>
+                          <b>Network: </b>
+                          {NETWORKS[wallet.chainId]?.name ?? wallet.chainId}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              ),
+            }}
           />
         )}
-        {!state.installedSnap && (
+        <CardContainer>
+          {state.error && (
+            <ErrorMessage>
+              <b>An error happened:</b> {state.error.message}
+            </ErrorMessage>
+          )}
+          {!state.isFlask && (
+            <Card
+              content={{
+                title: 'Install',
+                description:
+                  'Snaps is pre-release software only available in MetaMask Flask, a canary distribution for developers with access to upcoming features.',
+                button: <InstallFlaskButton />,
+              }}
+              fullWidth
+            />
+          )}
+          {!state.installedSnap && (
+            <Card
+              content={{
+                title: 'Connect',
+                description: 'Install the snap to use the 2FA-powered wallet.',
+                button: (
+                  <ConnectButton
+                    onClick={handleConnectClick}
+                    disabled={!state.isFlask}
+                  />
+                ),
+              }}
+              disabled={!state.isFlask}
+            />
+          )}
+          {shouldDisplayReconnectButton(state.installedSnap) && (
+            <Card
+              content={{
+                title: 'Reconnect',
+                description:
+                  "This is for development only, you shouldn't be seeing this.",
+                button: (
+                  <ReconnectButton
+                    onClick={handleConnectClick}
+                    disabled={!state.installedSnap}
+                  />
+                ),
+              }}
+              disabled={!state.installedSnap}
+            />
+          )}
           <Card
             content={{
-              title: 'Connect',
-              description:
-                'Get started by connecting to and installing the example snap.',
+              title: 'Create a 2FA-powered wallet',
+              description: 'Create a wallet',
               button: (
-                <ConnectButton
-                  onClick={handleConnectClick}
-                  disabled={!state.isFlask}
+                <GenericButton
+                  title="Create Wallet"
+                  onClick={handleCreateWallet}
+                  disabled={!connectedAccount}
                 />
               ),
             }}
-            disabled={!state.isFlask}
+            disabled={false}
+            fullWidth={false}
           />
-        )}
-        {shouldDisplayReconnectButton(state.installedSnap) && (
           <Card
             content={{
-              title: 'Reconnect',
+              title: 'WalletConnect',
               description:
-                'While connected to a local running snap this button will always be displayed in order to update the snap if a change is made.',
+                'Paste the Wallect Connect link to connect to a dapp',
               button: (
-                <ReconnectButton
-                  onClick={handleConnectClick}
-                  disabled={!state.installedSnap}
-                />
+                <>
+                  <input
+                    value={wcUri}
+                    onChange={(e) => setWcUri(e.target.value)}
+                    style={{
+                      marginTop: -10,
+                      marginBottom: 8,
+                    }}
+                  />
+                  <GenericButton
+                    title="Connect"
+                    onClick={connectWithUri}
+                    disabled={!connectedAccount}
+                  />
+                </>
               ),
             }}
-            disabled={!state.installedSnap}
+            disabled={false}
+            fullWidth={false}
           />
-        )}
-        <Card
-          content={{
-            title: 'Send Hello message',
-            description:
-              'Display a custom message within a confirmation screen in MetaMask.',
-            button: (
-              <SendHelloButton
-                onClick={handleSendHelloClick}
-                disabled={false}
-              />
-            ),
-          }}
-          disabled={false}
-          fullWidth={false}
-        />
-        <Notice>
-          <p>
-            Please note that the <b>snap.manifest.json</b> and{' '}
-            <b>package.json</b> must be located in the server root directory and
-            the bundle must be hosted at the location specified by the location
-            field.
-          </p>
-        </Notice>
-      </CardContainer>
-    </Container>
+        </CardContainer>
+      </Container>
+    </>
   );
 };
