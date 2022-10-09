@@ -6,6 +6,7 @@ import {
 import {
   metaMaskWallet,
   walletConnectWallet,
+  coinbaseWallet,
 } from '@rainbow-me/rainbowkit/wallets';
 import '@rainbow-me/rainbowkit/styles.css';
 import styled, { ThemeProvider } from 'styled-components';
@@ -55,7 +56,11 @@ const { chains, provider } = configureChains(
 const connectors = connectorsForWallets([
   {
     groupName: 'Wallets',
-    wallets: [metaMaskWallet({ chains }), walletConnectWallet({ chains })],
+    wallets: [
+      metaMaskWallet({ chains }),
+      walletConnectWallet({ chains }),
+      coinbaseWallet({ appName: 'Anzen', chains }),
+    ],
   },
 ]);
 
