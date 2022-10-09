@@ -1,7 +1,6 @@
 import WalletConnect from '@walletconnect/client';
 import { Buffer } from 'buffer';
 import { ethers } from 'ethers';
-import walletAbi from '../abis/Wallet.json';
 import { WalletInfo } from '../types';
 import { normalizeChainId } from './format';
 
@@ -19,7 +18,10 @@ export function setWcActiveWallet(wallet: WalletInfo) {
 
 const connectors: WalletConnect[] = [];
 
-export async function initWalletConnect(uri: string) {
+export async function initWalletConnect(
+  uri: string,
+  setPendingRequest: (req: any) => void,
+) {
   try {
     console.log('q', uri);
     const connector = new WalletConnect({ uri });
@@ -29,14 +31,17 @@ export async function initWalletConnect(uri: string) {
       await connector.createSession();
     }
 
-    subscribeToEvents(connector);
+    subscribeToEvents(connector, setPendingRequest);
   } catch (error) {
     console.error(error);
     throw error;
   }
 }
 
-function subscribeToEvents(connector: WalletConnect) {
+function subscribeToEvents(
+  connector: WalletConnect,
+  setPendingRequest: (req: any) => void,
+) {
   connector.on('session_request', (error, payload) => {
     console.log('EVENT', 'session_request');
 
@@ -64,39 +69,36 @@ function subscribeToEvents(connector: WalletConnect) {
 
   connector.on('call_request', async (error, payload) => {
     // tslint:disable-next-line
-    console.log('EVENT', 'call_request', 'method', payload.method);
-    console.log('EVENT', 'call_request', 'params', payload.params);
+    console.log('EVENT', 'call_request', payload);
 
     if (error) {
       throw error;
     }
 
     if (payload.method === 'eth_sendTransaction') {
-      const { to, data, value, from } = payload.params[0];
+      const { to, data, value: rawValue, from } = payload.params[0];
+      const value = rawValue ?? '0x0';
 
-      const contractInterface = new ethers.utils.Interface(walletAbi);
-      const encodedData = contractInterface.encodeFunctionData('exec', [
-        to,
-        value,
-        data,
-      ]);
+      const encoded = ethers.utils.solidityPack(
+        ['address', 'uint256', 'bytes'],
+        [to, value, data],
+      );
 
-      // @ts-ignore
-      const txHash: string = await window.ethereum.request({
-        method: 'eth_sendTransaction',
-        params: [
-          {
-            from: activeOwner,
-            to: activeAccount,
-            value: '0x00',
-            data: encodedData,
-          },
-        ],
+      setPendingRequest({
+        connector,
+        contractInput: {
+          to,
+          value,
+          data,
+          encoded,
+        },
+        from: activeOwner,
+        to: from, // from is the SCW
+        chainId: connector.chainId,
+        id: payload.id,
+        jsonrpc: payload.jsonrpc,
       });
-      console.log(txHash);
     }
-
-    // TODO
   });
 
   connector.on('connect', (error, payload) => {

@@ -16,6 +16,10 @@ export const NETWORKS: {
     name: 'Polygon',
     rpc: 'https://polygon-rpc.com',
   },
+  '0xa4ec': {
+    name: 'Celo',
+    rpc: 'https://forno.celo.org',
+  },
 };
 
 export function getProvider(chainId: string) {

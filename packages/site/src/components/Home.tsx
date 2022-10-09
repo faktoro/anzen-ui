@@ -1,6 +1,10 @@
-import React, { useContext, useState } from 'react';
+import axios from 'axios';
+import { ethers } from 'ethers';
+import React, { useContext, useEffect, useState } from 'react';
 import { useAsync } from 'react-async-hook';
+import QRCode from 'react-qr-code';
 import styled from 'styled-components';
+import walletAbi from '../abis/Wallet.json';
 import { MetamaskActions, MetaMaskContext } from '../hooks';
 import { WalletInfo } from '../types';
 import {
@@ -91,6 +95,13 @@ const ErrorMessage = styled.div`
   }
 `;
 
+enum TFASetupState {
+  Loading = 'Loading',
+  NotStarted = 'NotStarted',
+  ScanningQrCode = 'ScanningQrCode',
+  Done = 'Done',
+}
+
 export const Home = () => {
   const [state, dispatch] = useContext(MetaMaskContext);
   const [connectedAccount, setConnectedAccount] = useState<string | null>(null);
@@ -98,6 +109,17 @@ export const Home = () => {
   const [wallets, setWallets] = useState<WalletInfo[]>([]);
   const [wcUri, setWcUri] = useState('');
   const [activeWallet, setActiveWallet] = useState<WalletInfo | null>(null);
+  const [pendingRequest, setPendingRequest] = useState<any>();
+  const [tfaSetup, setTfaSetup] = useState<TFASetupState>(
+    TFASetupState.Loading,
+  );
+  const [qrUri, setQrUri] = useState<string | null>('asd');
+  const [setupTfaCode, setSetupTfaCode] = useState('');
+  const [verificationTfaCode, setVerificationTfaCode] = useState('');
+
+  useEffect(() => {
+
+  }, [connectedAccount])
 
   function updateActiveWallet(wallet: WalletInfo) {
     setWcActiveWallet(wallet);
@@ -152,8 +174,133 @@ export const Home = () => {
   }
 
   async function connectWithUri() {
-    await initWalletConnect(wcUri);
+    await initWalletConnect(wcUri, setPendingRequest);
   }
+
+  async function onAcceptRequest() {
+    const { to, value, data, encoded } = pendingRequest.contractInput;
+
+    const response = await axios.post(
+      `https://us-central1-faktoro-7469a.cloudfunctions.net/signTransaction`,
+      {
+        address: connectedAccount,
+        twoFactorCode: verificationTfaCode,
+        transaction: encoded,
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      },
+    );
+    const { v, r, s } = response.data.signature;
+
+    const contractInterface = new ethers.utils.Interface(walletAbi);
+    const encodedData = contractInterface.encodeFunctionData(
+      'executeWithSignature',
+      [to, value, data, { v, r, s }],
+    );
+
+    // @ts-ignore
+    const txHash: string = await window.ethereum.request({
+      method: 'eth_sendTransaction',
+      params: [
+        {
+          from: pendingRequest.from,
+          to: pendingRequest.to,
+          value: '0x00',
+          data: encodedData,
+        },
+      ],
+    });
+    console.info(txHash);
+
+    pendingRequest.connector.approveRequest({
+      id: pendingRequest.id,
+      jsonrpc: pendingRequest.jsonrpc,
+      result: txHash,
+    });
+    setPendingRequest(undefined);
+  }
+
+  function onRejectRequest() {
+    pendingRequest.connector.rejectRequest({
+      id: pendingRequest.id,
+      jsonrpc: pendingRequest.jsonrpc,
+      error: 'Denied by user',
+    });
+    setPendingRequest(undefined);
+  }
+
+  useAsync(async () => {
+    if (!connectedAccount) {
+      return;
+    }
+
+    try {
+      const response = await axios.post(
+        `https://us-central1-faktoro-7469a.cloudfunctions.net/checkRegistration`,
+        {
+          address: connectedAccount,
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        },
+      );
+      const { registered } = response.data;
+      setTfaSetup(registered ? TFASetupState.Done : TFASetupState.NotStarted);
+    } catch (error) {
+      console.error(error);
+    }
+  }, [connectedAccount]);
+
+  async function sign2FASetupMessage() {
+    const message = `I want to set up a 2FA-secured wallet on my address ${connectedAccount}`;
+    const signature = await window.ethereum.request({
+      method: 'personal_sign',
+      params: [message, connectedAccount, ''],
+    });
+
+    const response = await axios.post(
+      `https://us-central1-faktoro-7469a.cloudfunctions.net/registerUser`,
+      {
+        address: connectedAccount,
+        signature,
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      },
+    );
+
+    const { qrUri } = response.data;
+
+    setTfaSetup(TFASetupState.ScanningQrCode);
+    setQrUri(qrUri);
+  }
+
+  useAsync(async () => {
+    if (setupTfaCode.length === 6) {
+      const response = await axios.post(
+        `https://us-central1-faktoro-7469a.cloudfunctions.net/verifyRegistration`,
+        {
+          address: connectedAccount,
+          twoFactorCode: setupTfaCode,
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        },
+      );
+
+      console.log(response.data);
+      setTfaSetup(TFASetupState.Done);
+    }
+  }, [setupTfaCode]);
 
   return (
     <>
@@ -163,6 +310,68 @@ export const Home = () => {
           Welcome to <Span>Faktoro</Span>
         </Heading>
         <Subtitle>Your crypto wallet with 2-Factor Authentication.</Subtitle>
+        {Boolean(pendingRequest) && (
+          <Card
+            fullWidth
+            content={{
+              title: 'Pending Request',
+              description: 'A dapp requested to send a transaction',
+              button: (
+                <>
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <p>
+                      <b>Owner: </b>
+                      {shortenedAddress(pendingRequest.from)}
+                    </p>
+                    <p>
+                      <b>Wallet address: </b>
+                      {shortenedAddress(pendingRequest.to)}
+                    </p>
+                    {/* <p>
+                      <b>Network: </b>
+                      {NETWORKS[pendingRequest.chainId]?.name ??
+                        pendingRequest.chainId}
+                    </p> */}
+                  </div>
+                  <label>Input a TFA code from your authenticator app</label>
+                  <input
+                    value={verificationTfaCode}
+                    onChange={(e) => setVerificationTfaCode(e.target.value)}
+                    style={{
+                      marginTop: 8,
+                      fontSize: 16,
+                      width: 200,
+                      height: 30,
+                      textAlign: 'center',
+                    }}
+                  />
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'row',
+                      justifyContent: 'center',
+                      marginTop: 20,
+                    }}
+                  >
+                    <GenericButton
+                      title="Accept"
+                      disabled={verificationTfaCode.length !== 6}
+                      onClick={onAcceptRequest}
+                    />
+                    <div style={{ width: 30 }} />
+                    <GenericButton title="Reject" onClick={onRejectRequest} />
+                  </div>
+                </>
+              ),
+            }}
+          />
+        )}
         {wallets.length > 0 && (
           <Card
             fullWidth
@@ -262,47 +471,96 @@ export const Home = () => {
               disabled={!state.installedSnap}
             />
           )}
-          <Card
-            content={{
-              title: 'Create a 2FA-powered wallet',
-              description: 'Create a wallet',
-              button: (
-                <GenericButton
-                  title="Create Wallet"
-                  onClick={handleCreateWallet}
-                  disabled={!connectedAccount}
-                />
-              ),
-            }}
-            disabled={false}
-            fullWidth={false}
-          />
-          <Card
-            content={{
-              title: 'WalletConnect',
-              description:
-                'Paste the Wallect Connect link to connect to a dapp',
-              button: (
-                <>
-                  <input
-                    value={wcUri}
-                    onChange={(e) => setWcUri(e.target.value)}
+          {tfaSetup === TFASetupState.NotStarted && (
+            <Card
+              content={{
+                title: 'Two-Factor Authentication Setup',
+                description: 'Set up 2FA to create your secure wallet.',
+                button: (
+                  <div>
+                    <GenericButton title="Sign" onClick={sign2FASetupMessage} />
+                  </div>
+                ),
+              }}
+            />
+          )}
+          {tfaSetup === TFASetupState.ScanningQrCode && qrUri && (
+            <Card
+              content={{
+                title: 'Two-Factor Authentication Setup',
+                description:
+                  'Scan this QR code from your authenticator app and input a code below.',
+                button: (
+                  <div
                     style={{
-                      marginTop: -10,
-                      marginBottom: 8,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
                     }}
-                  />
+                  >
+                    <QRCode value={qrUri} />
+
+                    <input
+                      value={setupTfaCode}
+                      onChange={(e) => setSetupTfaCode(e.target.value)}
+                      style={{
+                        marginTop: 8,
+                        fontSize: 16,
+                        width: 200,
+                        height: 30,
+                        textAlign: 'center',
+                      }}
+                    />
+                  </div>
+                ),
+              }}
+            />
+          )}
+          {tfaSetup === TFASetupState.Done && (
+            <Card
+              content={{
+                title: 'Create a 2FA-powered wallet',
+                description: 'Create a wallet',
+                button: (
                   <GenericButton
-                    title="Connect"
-                    onClick={connectWithUri}
+                    title="Create Wallet"
+                    onClick={handleCreateWallet}
                     disabled={!connectedAccount}
                   />
-                </>
-              ),
-            }}
-            disabled={false}
-            fullWidth={false}
-          />
+                ),
+              }}
+              disabled={false}
+              fullWidth={false}
+            />
+          )}
+          {activeWallet && (
+            <Card
+              content={{
+                title: 'WalletConnect',
+                description:
+                  'Paste the Wallect Connect link to connect to a dapp',
+                button: (
+                  <>
+                    <input
+                      value={wcUri}
+                      onChange={(e) => setWcUri(e.target.value)}
+                      style={{
+                        marginTop: -10,
+                        marginBottom: 8,
+                      }}
+                    />
+                    <GenericButton
+                      title="Connect"
+                      onClick={connectWithUri}
+                      disabled={!connectedAccount}
+                    />
+                  </>
+                ),
+              }}
+              disabled={false}
+              fullWidth={false}
+            />
+          )}
         </CardContainer>
       </Container>
     </>
