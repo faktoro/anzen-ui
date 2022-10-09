@@ -1,46 +1,27 @@
-# TypeScript Example Snap Front-end
+# Anzen frontend
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Anzen is a Smart Contract wallet secured by 2FA. Our goal is to make sure that users never lose their funds, even if their private key is stolen!
 
-## Available Scripts
+Anzen was built during the ETHGlobal hackathon at ETHBogotá.
 
-In the project directory, you can run:
+You can try Anzen on https://faktoro-7469a.web.app/ but please remember this is a beta version and may run into unexpected errors.
 
-### `yarn start`
+The code for the frontend is in `packages/site`. Please ignore the rest of the repo and we're very sorry for the mess.
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+## Compatible Networks 
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+Anzen works on the following networks:  
+- Polygon  
+- Optimism  
+- Etherem  
+- Arbitrum  
+- Celo  
+- Avalanche  
+- Gnosis Chain  
 
-### `yarn test`
+We did most of our testing on Polygon and Optimism.
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+Here is an example wallet deployed on Polygon: https://polygonscan.com/address/0xe1d4a865fdc0343539a9ecf410f0909cab218621  
+And an example wallet deployed on Optimism: https://optimistic.etherscan.io/address/0x88a735809b79818189A1d1e906b7b1D489Cb0e15
 
-### `yarn build`
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
-
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
-
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
-
-### `yarn eject`
-
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
-
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
-
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc.) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
-
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
