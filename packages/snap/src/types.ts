@@ -1,11 +1,9 @@
-
-
 export interface State {
-  accounts: AccountState[]
+  accounts: AccountState[];
 }
 
 export interface AccountState {
-  owner: string
-  chainId: string
-  walletAddress: string
+  owner: string;
+  chainId: number;
+  walletAddress: string;
 }

@@ -11,6 +11,7 @@ module.exports = {
         '@typescript-eslint/ban-ts-comment': 0,
         '@typescript-eslint/no-shadow': 0,
         'import/order': 0,
+        'import/no-unassigned-import': 0,
       },
     },
   ],

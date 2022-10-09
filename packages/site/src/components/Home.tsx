@@ -1,32 +1,21 @@
 import axios from 'axios';
 import { ethers } from 'ethers';
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useAsync } from 'react-async-hook';
 import QRCode from 'react-qr-code';
 import styled from 'styled-components';
+import { useAccount, useNetwork, useSigner } from 'wagmi';
 import walletAbi from '../abis/Wallet.json';
-import { MetamaskActions, MetaMaskContext } from '../hooks';
-import { WalletInfo } from '../types';
+import { useRequireNetwork } from '../hooks/useRequireNetwork';
+import { AccountDetails, WalletInfo } from '../types';
 import {
-  connectSnap,
   createWallet,
-  fetchWallets,
-  getChainId,
-  getConnectedAccount,
-  getSnap,
+  getProvider,
   NETWORKS,
   shortenedAddress,
-  shouldDisplayReconnectButton,
-  watchChainId,
-  watchConnectedAccount,
 } from '../utils';
 import { initWalletConnect, setWcActiveWallet } from '../utils/walletConnect';
-import {
-  ConnectButton,
-  GenericButton,
-  InstallFlaskButton,
-  ReconnectButton,
-} from './Buttons';
+import { GenericButton } from './Buttons';
 import { Card } from './Card';
 import { Header } from './Header';
 
@@ -103,9 +92,10 @@ enum TFASetupState {
 }
 
 export const Home = () => {
-  const [state, dispatch] = useContext(MetaMaskContext);
-  const [connectedAccount, setConnectedAccount] = useState<string | null>(null);
-  const [chainId, setChainId] = useState<string | null>(null);
+  const { address } = useAccount();
+  const network = useNetwork();
+  const chainId = network.chain?.id;
+
   const [wallets, setWallets] = useState<WalletInfo[]>([]);
   const [wcUri, setWcUri] = useState('');
   const [activeWallet, setActiveWallet] = useState<WalletInfo | null>(null);
@@ -116,60 +106,57 @@ export const Home = () => {
   const [qrUri, setQrUri] = useState<string | null>('asd');
   const [setupTfaCode, setSetupTfaCode] = useState('');
   const [verificationTfaCode, setVerificationTfaCode] = useState('');
+  const [accountDetails, setAccountDetails] = useState<AccountDetails[]>([]);
 
-  useEffect(() => {
+  const requireNetwork = useRequireNetwork();
+  const { data: signer } = useSigner();
+  // const provider = useProvider();
 
-  }, [connectedAccount])
+  useAsync(async () => {
+    if (!address) {
+      return;
+    }
+    const provider = getProvider(1); // Ethereum chain Id
+    const [name, avatar] = await Promise.all([
+      provider.lookupAddress(address),
+      provider.getAvatar(address),
+    ]);
+    accountDetails.push({
+      address,
+      name,
+      avatar,
+    });
+    setAccountDetails([...accountDetails]);
+  }, [address]);
+
+  function displayName(address: string) {
+    return (
+      accountDetails.find((acc) => acc.address === address)?.name ?? address
+    );
+  }
 
   function updateActiveWallet(wallet: WalletInfo) {
     setWcActiveWallet(wallet);
     setActiveWallet(wallet);
   }
 
-  useAsync(async () => {
-    setConnectedAccount(await getConnectedAccount());
-    watchConnectedAccount(setConnectedAccount);
-  }, []);
-
-  useAsync(async () => {
-    setChainId(await getChainId());
-    watchChainId(setChainId);
-  }, []);
-
-  async function updateSnapWallets() {
-    const fetchedWallets = await fetchWallets();
-    setWallets(fetchedWallets);
+  async function updateAnzenWallets(wallets: WalletInfo[]) {
+    setWallets(wallets);
     if (!activeWallet) {
-      updateActiveWallet(fetchedWallets[0] ?? null);
+      updateActiveWallet(wallets[0] ?? null);
     }
   }
-  useAsync(updateSnapWallets, []);
-
-  const handleConnectClick = async () => {
-    try {
-      await connectSnap();
-      const installedSnap = await getSnap();
-
-      dispatch({
-        type: MetamaskActions.SetInstalled,
-        payload: installedSnap,
-      });
-    } catch (e) {
-      console.error(e);
-      dispatch({ type: MetamaskActions.SetError, payload: e });
-    }
-  };
 
   async function handleCreateWallet() {
     try {
-      if (!connectedAccount || !chainId) {
+      if (!address || !chainId) {
         return;
       }
-      await createWallet(connectedAccount, chainId);
-      await updateSnapWallets();
+      const newWallet = await createWallet(signer, address, chainId);
+      wallets.push(newWallet);
+      updateAnzenWallets(wallets);
     } catch (e) {
       console.error(e);
-      dispatch({ type: MetamaskActions.SetError, payload: e });
     }
   }
 
@@ -178,12 +165,15 @@ export const Home = () => {
   }
 
   async function onAcceptRequest() {
+    if (!signer) {
+      return;
+    }
     const { to, value, data, encoded } = pendingRequest.contractInput;
 
     const response = await axios.post(
       `https://us-central1-faktoro-7469a.cloudfunctions.net/signTransaction`,
       {
-        address: connectedAccount,
+        address,
         twoFactorCode: verificationTfaCode,
         transaction: encoded,
       },
@@ -201,24 +191,19 @@ export const Home = () => {
       [to, value, data, { v, r, s }],
     );
 
-    // @ts-ignore
-    const txHash: string = await window.ethereum.request({
-      method: 'eth_sendTransaction',
-      params: [
-        {
-          from: pendingRequest.from,
-          to: pendingRequest.to,
-          value: '0x00',
-          data: encodedData,
-        },
-      ],
+    const tx = await signer.sendTransaction({
+      from: pendingRequest.from,
+      to: pendingRequest.to,
+      value: '0x00',
+      data: encodedData,
     });
-    console.info(txHash);
+
+    console.info(`Sent tx with hash ${tx.hash}`);
 
     pendingRequest.connector.approveRequest({
       id: pendingRequest.id,
       jsonrpc: pendingRequest.jsonrpc,
-      result: txHash,
+      result: tx.hash,
     });
     setPendingRequest(undefined);
   }
@@ -233,7 +218,7 @@ export const Home = () => {
   }
 
   useAsync(async () => {
-    if (!connectedAccount) {
+    if (!address) {
       return;
     }
 
@@ -241,7 +226,7 @@ export const Home = () => {
       const response = await axios.post(
         `https://us-central1-faktoro-7469a.cloudfunctions.net/checkRegistration`,
         {
-          address: connectedAccount,
+          address,
         },
         {
           headers: {
@@ -249,24 +234,36 @@ export const Home = () => {
           },
         },
       );
-      const { registered } = response.data;
+      const { registered, wallets } = response.data;
+      console.log(response.data);
+      updateAnzenWallets(
+        (wallets ?? []).map(
+          ({
+            walletAddress,
+            chainId,
+          }: {
+            walletAddress: string;
+            chainId: string;
+          }) => ({
+            address,
+            walletAddress,
+            chainId: Number(chainId),
+          }),
+        ),
+      );
       setTfaSetup(registered ? TFASetupState.Done : TFASetupState.NotStarted);
     } catch (error) {
       console.error(error);
     }
-  }, [connectedAccount]);
+  }, [address]);
 
   async function sign2FASetupMessage() {
-    const message = `I want to set up a 2FA-secured wallet on my address ${connectedAccount}`;
-    const signature = await window.ethereum.request({
-      method: 'personal_sign',
-      params: [message, connectedAccount, ''],
-    });
-
+    const message = `I want to set up a 2FA-secured wallet on my address ${address}`;
+    const signature = await signer?.signMessage(message);
     const response = await axios.post(
       `https://us-central1-faktoro-7469a.cloudfunctions.net/registerUser`,
       {
-        address: connectedAccount,
+        address,
         signature,
       },
       {
@@ -287,7 +284,7 @@ export const Home = () => {
       const response = await axios.post(
         `https://us-central1-faktoro-7469a.cloudfunctions.net/verifyRegistration`,
         {
-          address: connectedAccount,
+          address,
           twoFactorCode: setupTfaCode,
         },
         {
@@ -302,14 +299,23 @@ export const Home = () => {
     }
   }, [setupTfaCode]);
 
+  console.log(tfaSetup);
+
   return (
     <>
-      <Header connectedAddress={connectedAccount} />
+      <Header accountDetails={accountDetails} />
       <Container>
-        <Heading>
-          Welcome to <Span>Faktoro</Span>
-        </Heading>
-        <Subtitle>Your crypto wallet with 2-Factor Authentication.</Subtitle>
+        {(tfaSetup === TFASetupState.Loading ||
+          tfaSetup === TFASetupState.NotStarted) && (
+          <>
+            <Heading>
+              Welcome to <Span>Anzen</Span>
+            </Heading>
+            <Subtitle>
+              Your crypto wallet with 2-Factor Authentication.
+            </Subtitle>
+          </>
+        )}
         {Boolean(pendingRequest) && (
           <Card
             fullWidth
@@ -327,30 +333,31 @@ export const Home = () => {
                   >
                     <p>
                       <b>Owner: </b>
-                      {shortenedAddress(pendingRequest.from)}
+                      {displayName(pendingRequest.from)}
                     </p>
                     <p>
                       <b>Wallet address: </b>
-                      {shortenedAddress(pendingRequest.to)}
+                      {displayName(pendingRequest.to)}
                     </p>
                     {/* <p>
                       <b>Network: </b>
                       {NETWORKS[pendingRequest.chainId]?.name ??
                         pendingRequest.chainId}
                     </p> */}
+
+                    <label>Input a TFA code from your authenticator app</label>
+                    <input
+                      value={verificationTfaCode}
+                      onChange={(e) => setVerificationTfaCode(e.target.value)}
+                      style={{
+                        marginTop: 8,
+                        fontSize: 16,
+                        width: 200,
+                        height: 30,
+                        textAlign: 'center',
+                      }}
+                    />
                   </div>
-                  <label>Input a TFA code from your authenticator app</label>
-                  <input
-                    value={verificationTfaCode}
-                    onChange={(e) => setVerificationTfaCode(e.target.value)}
-                    style={{
-                      marginTop: 8,
-                      fontSize: 16,
-                      width: 200,
-                      height: 30,
-                      textAlign: 'center',
-                    }}
-                  />
                   <div
                     style={{
                       display: 'flex',
@@ -387,7 +394,7 @@ export const Home = () => {
                         flexDirection: 'row',
                         alignItems: 'center',
                       }}
-                      key={`${wallet.owner}-${wallet.walletAddress}`}
+                      key={`${wallet.address}-${wallet.walletAddress}`}
                     >
                       <input
                         type="radio"
@@ -395,7 +402,7 @@ export const Home = () => {
                         checked={
                           activeWallet?.walletAddress ===
                             wallet.walletAddress &&
-                          activeWallet.owner === wallet.owner &&
+                          activeWallet.address === wallet.address &&
                           activeWallet.chainId === wallet.chainId
                         }
                         onChange={() => {
@@ -405,11 +412,11 @@ export const Home = () => {
                       <div style={{ marginLeft: 10 }}>
                         <p>
                           <b>Owner: </b>
-                          {shortenedAddress(wallet.owner)}
+                          {displayName(wallet.address)}
                         </p>
                         <p>
                           <b>Wallet address: </b>
-                          {shortenedAddress(wallet.walletAddress)}
+                          {displayName(wallet.walletAddress)}
                         </p>
                         <p>
                           <b>Network: </b>
@@ -424,68 +431,27 @@ export const Home = () => {
           />
         )}
         <CardContainer>
-          {state.error && (
-            <ErrorMessage>
-              <b>An error happened:</b> {state.error.message}
-            </ErrorMessage>
-          )}
-          {!state.isFlask && (
-            <Card
-              content={{
-                title: 'Install',
-                description:
-                  'Snaps is pre-release software only available in MetaMask Flask, a canary distribution for developers with access to upcoming features.',
-                button: <InstallFlaskButton />,
-              }}
-              fullWidth
-            />
-          )}
-          {!state.installedSnap && (
-            <Card
-              content={{
-                title: 'Connect',
-                description: 'Install the snap to use the 2FA-powered wallet.',
-                button: (
-                  <ConnectButton
-                    onClick={handleConnectClick}
-                    disabled={!state.isFlask}
-                  />
-                ),
-              }}
-              disabled={!state.isFlask}
-            />
-          )}
-          {shouldDisplayReconnectButton(state.installedSnap) && (
-            <Card
-              content={{
-                title: 'Reconnect',
-                description:
-                  "This is for development only, you shouldn't be seeing this.",
-                button: (
-                  <ReconnectButton
-                    onClick={handleConnectClick}
-                    disabled={!state.installedSnap}
-                  />
-                ),
-              }}
-              disabled={!state.installedSnap}
-            />
-          )}
           {tfaSetup === TFASetupState.NotStarted && (
             <Card
               content={{
                 title: 'Two-Factor Authentication Setup',
-                description: 'Set up 2FA to create your secure wallet.',
+                description:
+                  'Start by signing a message to verify that you own your wallet.',
                 button: (
                   <div>
-                    <GenericButton title="Sign" onClick={sign2FASetupMessage} />
+                    <GenericButton
+                      title="Sign Message"
+                      onClick={sign2FASetupMessage}
+                    />
                   </div>
                 ),
               }}
+              fullWidth
             />
           )}
           {tfaSetup === TFASetupState.ScanningQrCode && qrUri && (
             <Card
+              fullWidth
               content={{
                 title: 'Two-Factor Authentication Setup',
                 description:
@@ -525,12 +491,12 @@ export const Home = () => {
                   <GenericButton
                     title="Create Wallet"
                     onClick={handleCreateWallet}
-                    disabled={!connectedAccount}
+                    disabled={!address}
                   />
                 ),
               }}
               disabled={false}
-              fullWidth={false}
+              fullWidth={wallets.length === 0}
             />
           )}
           {activeWallet && (
@@ -552,7 +518,7 @@ export const Home = () => {
                     <GenericButton
                       title="Connect"
                       onClick={connectWithUri}
-                      disabled={!connectedAccount}
+                      disabled={!address}
                     />
                   </>
                 ),

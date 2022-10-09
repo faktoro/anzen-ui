@@ -11,7 +11,7 @@ let activeAccount = '';
 let activeChainId = 0;
 
 export function setWcActiveWallet(wallet: WalletInfo) {
-  activeOwner = wallet.owner;
+  activeOwner = wallet.address;
   activeAccount = wallet.walletAddress;
   activeChainId = normalizeChainId(wallet.chainId);
 }

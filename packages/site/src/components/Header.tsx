@@ -1,9 +1,9 @@
-import { useContext } from 'react';
-import styled, { useTheme } from 'styled-components';
-import { MetamaskActions, MetaMaskContext } from '../hooks';
-import { connectSnap, getSnap, shortenedAddress } from '../utils';
-import { HeaderButtons } from './Buttons';
-import { SnapLogo } from './SnapLogo';
+import { ConnectButton } from '@rainbow-me/rainbowkit';
+import styled from 'styled-components';
+import { useAccount } from 'wagmi';
+import { AccountDetails } from '../types';
+import { shortenedAddress } from '../utils';
+import anzenLogo from '../assets/anzen.png';
 
 const HeaderWrapper = styled.header`
   display: flex;
@@ -37,38 +37,54 @@ const RightContainer = styled.div`
 `;
 
 export const Header = ({
-  connectedAddress,
+  accountDetails,
 }: {
-  connectedAddress: string | null;
+  accountDetails: AccountDetails[];
 }) => {
-  const theme = useTheme();
-  const [state, dispatch] = useContext(MetaMaskContext);
+  const { address } = useAccount();
 
-  const handleConnectClick = async () => {
-    try {
-      await connectSnap();
-      const installedSnap = await getSnap();
-
-      dispatch({
-        type: MetamaskActions.SetInstalled,
-        payload: installedSnap,
-      });
-    } catch (e) {
-      console.error(e);
-      dispatch({ type: MetamaskActions.SetError, payload: e });
-    }
+  const { name, avatar } = accountDetails.find(
+    (acc) => acc.address === address,
+  ) ?? {
+    name: address ? shortenedAddress(address) : '',
+    avatar: null,
   };
+
   return (
     <HeaderWrapper>
       <LogoWrapper>
-        <SnapLogo color={theme.colors.icon.default} size={36} />
-        <Title>Faktoro</Title>
+        <img
+          style={{ width: 40, height: 40, borderRadius: 6 }}
+          src={anzenLogo}
+        />
+        <Title>Anzen</Title>
       </LogoWrapper>
       <RightContainer>
-        {connectedAddress ? (
-          <p>Connected as {shortenedAddress(connectedAddress)}</p>
+        {/* <ConnectButton accountStatus="avatar" showBalance={false} /> */}
+        {address ? (
+          <p
+            style={{
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+            }}
+          >
+            Connected as{' '}
+            {avatar && (
+              <img
+                style={{
+                  width: 30,
+                  height: 30,
+                  margin: '0 8px',
+                  borderRadius: 4,
+                }}
+                src={avatar}
+              />
+            )}
+            {name}
+          </p>
         ) : (
-          <HeaderButtons state={state} onConnectClick={handleConnectClick} />
+          <ConnectButton />
         )}
       </RightContainer>
     </HeaderWrapper>

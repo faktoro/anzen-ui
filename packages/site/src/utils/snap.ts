@@ -1,163 +1,60 @@
+import axios from 'axios';
 import { ethers } from 'ethers';
-import { defaultSnapOrigin } from '../config';
-import { GetSnapsResponse, Snap, WalletInfo } from '../types';
-import { getProvider, NETWORKS } from './ethers';
-
-export async function getConnectedAccount() {
-  const accounts = await window.ethereum.request({
-    method: 'eth_requestAccounts',
-  });
-  // @ts-ignore
-  return ethers.utils.getAddress(accounts?.[0]) ?? null;
-}
-
-export async function watchConnectedAccount(
-  updateAccount: (account: string) => void,
-) {
-  // @ts-ignore
-  window.ethereum.on('accountsChanged', (accounts: string[]) => {
-    updateAccount(ethers.utils.getAddress(accounts[0]));
-  });
-}
-
-export async function getChainId(): Promise<string | null> {
-  const chainId = await window.ethereum.request({
-    method: 'eth_chainId',
-  });
-  // @ts-ignore
-  return chainId ?? null;
-}
-
-export async function watchChainId(updateChainId: (chainId: string) => void) {
-  // @ts-ignore
-  window.ethereum.on('chainChanged', (chainId: string) => {
-    updateChainId(chainId);
-  });
-}
-
-/**
- * Get the installed snaps in MetaMask.
- *
- * @returns The snaps installed in MetaMask.
- */
-export const getSnaps = async (): Promise<GetSnapsResponse> => {
-  return (await window.ethereum.request({
-    method: 'wallet_getSnaps',
-  })) as unknown as GetSnapsResponse;
-};
-
-/**
- * Connect a snap to MetaMask.
- *
- * @param snapId - The ID of the snap.
- * @param params - The params to pass with the snap to connect.
- */
-export const connectSnap = async (
-  snapId: string = defaultSnapOrigin,
-  params: Record<'version' | string, unknown> = {},
-) => {
-  await window.ethereum.request({
-    method: 'wallet_enable',
-    params: [
-      {
-        wallet_snap: {
-          [snapId]: {
-            ...params,
-          },
-        },
-      },
-    ],
-  });
-};
-
-/**
- * Get the snap from MetaMask.
- *
- * @param version - The version of the snap to install (optional).
- * @returns The snap object returned by the extension.
- */
-export const getSnap = async (version?: string): Promise<Snap | undefined> => {
-  try {
-    const snaps = await getSnaps();
-
-    return Object.values(snaps).find(
-      (snap) =>
-        snap.id === defaultSnapOrigin && (!version || snap.version === version),
-    );
-  } catch (e) {
-    console.log('Failed to obtain installed snap', e);
-    return undefined;
-  }
-};
+import { WalletInfo } from '../types';
 
 const AUTHENTICATOR_ADDRESS = '0x3f8c5Aec7F304FAfcc6Ba0c2D3215dc759865CaC';
 const WALLET_BYTECODE =
   '0x60803461009b57601f6113ee38819003918201601f19168301916001600160401b038311848410176100a057808492604094855283398101031261009b5780610056602061004f61008c946100b6565b92016100b6565b6203f48060035560018060a01b03908160018060a01b031993168360005416176000551681600154161760015560055416600555565b60405161132390816100cb8239f35b600080fd5b634e487b7160e01b600052604160045260246000fd5b51906001600160a01b038216820361009b5756fe6080604052600436101561001b575b361561001957600080fd5b005b60003560e01c80630ffb3dc2146101165780631ea0be9f1461010d5780632ab5ac8b146101045780635d1222aa146100d757806363a8374d146100fb5780636f078a91146100f25780637e432c2c146100e95780638da5cb5b146100e0578063affed0e0146100d7578063b4c2c44d146100ce578063b50ef71b146100c5578063d371c045146100bc5763fcdc638b0361000e576100b7610da3565b61000e565b506100b7610a1c565b506100b76108da565b506100b7610897565b506100b7610287565b506100b7610844565b506100b76107b8565b506100b7610692565b506100b76105b3565b506100b761022d565b506100b76101da565b506100b7610147565b6004359073ffffffffffffffffffffffffffffffffffffffff8216820361014257565b600080fd5b50346101425760407ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffc3601126101425773ffffffffffffffffffffffffffffffffffffffff61019461011f565b61019f303314610de0565b167fffffffffffffffffffffffff000000000000000000000000000000000000000060055416176005556101d560243542610e75565b600655005b50346101425760007ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffc36011261014257602073ffffffffffffffffffffffffffffffffffffffff60015416604051908152f35b50346101425760007ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffc36011261014257604073ffffffffffffffffffffffffffffffffffffffff6005541660065482519182526020820152f35b50346101425760007ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffc360112610142576020600254604051908152f35b6004548110156102ff576005906004600052027f8a35acfbc15ff81a39ae7d344fd709f28e8600b4aa8c65c6b64bfe7fe36bd19b0190600090565b7f4e487b7100000000000000000000000000000000000000000000000000000000600052603260045260246000fd5b90600182811c92168015610377575b602083101461034857565b7f4e487b7100000000000000000000000000000000000000000000000000000000600052602260045260246000fd5b91607f169161033d565b507f4e487b7100000000000000000000000000000000000000000000000000000000600052604160045260246000fd5b60a0810190811067ffffffffffffffff8211176103cd57604052565b6103d5610381565b604052565b6040810190811067ffffffffffffffff8211176103cd57604052565b6060810190811067ffffffffffffffff8211176103cd57604052565b90601f7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0910116810190811067ffffffffffffffff8211176103cd57604052565b90604051918260008254926104678461032e565b9081845260019485811690816000146104d65750600114610493575b505061049192500383610412565b565b9093915060005260209081600020936000915b8183106104be57505061049193508201013880610483565b855488840185015294850194879450918301916104a6565b9450505050507fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff00915016602083015261049182604081013880610483565b60005b601c811061053457601c91501161052b5750565b601c6000910152565b8181015183820152602001610517565b91908251928382526000905b84821061059b5750601f84602094957fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0931161058e575b0116010190565b6000858286010152610587565b90602090818082850101519082860101520190610550565b50346101425760207ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffc36011261014257600435600454811015610142576105f9906102c4565b5073ffffffffffffffffffffffffffffffffffffffff81541660018201549161062460028201610453565b61065360ff6004600385015494015416916040519586958652602086015260a0604086015260a0850190610544565b916060840152151560808301520390f35b9181601f840112156101425782359167ffffffffffffffff8311610142576020838186019501011161014257565b50346101425760c07ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffc360112610142576106ca61011f565b6024359060443567ffffffffffffffff8111610142576106ee903690600401610664565b60607fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff9c94929436011261014257610019936107b29161074673ffffffffffffffffffffffffffffffffffffffff600054163314610e8d565b6107ab60405160208101907fffffffffffffffffffffffffffffffffffffffff0000000000000000000000008860601b168252866034820152838560548301376107a3605482868101600083820152036034810184520182610412565b519020611133565b3691610fc6565b916110e2565b50346101425760207ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffc3601126101425761080b73ffffffffffffffffffffffffffffffffffffffff600054163314610e8d565b600461081781356102c4565b500180547fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff00166001179055005b50346101425760007ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffc36011261014257602073ffffffffffffffffffffffffffffffffffffffff60005416604051908152f35b50346101425760207ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffc360112610142576108d2303314610de0565b600435600355005b50346101425760207ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffc3601126101425761092d73ffffffffffffffffffffffffffffffffffffffff600054163314610e8d565b6109386004356102c4565b50600481019060ff8254166109be5761099461001992610969610962600385015460035490610e75565b4211610ef2565b60017fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff00825416179055565b805473ffffffffffffffffffffffffffffffffffffffff16906107b2600260018301549201610453565b60646040517f08c379a000000000000000000000000000000000000000000000000000000000815260206004820152601c60248201527f5472616e73616374696f6e20616c7265616479206578656375746564000000006044820152fd5b50346101425760607ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffc36011261014257610a5461011f565b6044359067ffffffffffffffff9081831161014257610a7860049336908501610664565b939073ffffffffffffffffffffffffffffffffffffffff94600094610aa1878754163314610e8d565b8660405195610aaf876103b1565b168552610ac86020938487019360243585523691610fc6565b90604086019182526060860192428452608087019488865286549168010000000000000000831015610d96575b610b056001938481018a556102c4565b9b909b610d6b57610b54908a51168c9073ffffffffffffffffffffffffffffffffffffffff167fffffffffffffffffffffffff0000000000000000000000000000000000000000825416179055565b51828b015560028a0193518051938411610d5e575b610b7d84610b77875461032e565b87610ffd565b81601f8511600114610c82575094899a9484610c0794818b9a9597610c3f9c987f30a54c0c839d86cd2670c0aa2565fee8b1cfcac95346ae7759fd6f7d69507c809f9b610c399c93610c57575b50507fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff91921b9260031b1c19161790555b51600385015551151590565b91019060ff7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff0083541691151516179055565b54611051565b90610c4f6040519283928361107f565b0390a1604051f35b015191507fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff38610bca565b91907fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe085949516610cb887600052602060002090565b938c905b828210610d4757505094848a9994610c3999947f30a54c0c839d86cd2670c0aa2565fee8b1cfcac95346ae7759fd6f7d69507c809e9f9994610c0798610c3f9e9a10610d10575b505050811b019055610bfb565b01517fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff60f88460031b161c19169055388080610d03565b808886978294978701518155019601940190610cbc565b610d66610381565b610b69565b60248b808b7f4e487b7100000000000000000000000000000000000000000000000000000000825252fd5b610d9e610381565b610af5565b50346101425760007ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffc360112610142576020600354604051908152f35b15610de757565b60646040517f08c379a000000000000000000000000000000000000000000000000000000000815260206004820152601360248201527f4f6e6c7920696e7465726e616c2063616c6c73000000000000000000000000006044820152fd5b507f4e487b7100000000000000000000000000000000000000000000000000000000600052601160045260246000fd5b81198111610e81570190565b610e89610e45565b0190565b15610e9457565b60646040517f08c379a000000000000000000000000000000000000000000000000000000000815260206004820152600f60248201527f3246413a204f6e6c79206f776e657200000000000000000000000000000000006044820152fd5b15610ef957565b60846040517f08c379a000000000000000000000000000000000000000000000000000000000815260206004820152602a60248201527f4d7573742077616974206265666f726520657865637574696e6720746865207460448201527f72616e73616374696f6e000000000000000000000000000000000000000000006064820152fd5b7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0601f60209267ffffffffffffffff8111610fb9575b01160190565b610fc1610381565b610fb3565b929192610fd282610f7d565b91610fe06040519384610412565b829481845281830111610142578281602093846000960137010152565b90601f811161100b57505050565b600091825260208220906020601f850160051c83019410611047575b601f0160051c01915b82811061103c57505050565b818155600101611030565b9092508290611027565b7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff9060018110610e81570190565b9291906020906040855273ffffffffffffffffffffffffffffffffffffffff815116604086015281810151606086015260806110c9604083015160a08389015260e0880190610544565b91606081015160a08801520151151560c0860152930152565b916000928392602083519301915af13d1561112b573d9061110282610f7d565b916111106040519384610412565b82523d6000602084013e5b156111235750565b602081519101fd5b60609061111b565b600060209182604051611145816103da565b601c815201907f19457468657265756d205369676e6564204d6573736167653a0a33320000000082526040519061117f8583018094610514565b603c820152603c8152611191816103f6565b51902061119c6112d0565b6040805192835260ff9190911660208301526084359082015260a435606082015281805260809060015afa156112c3575b60005173ffffffffffffffffffffffffffffffffffffffff61122061120760015473ffffffffffffffffffffffffffffffffffffffff1690565b73ffffffffffffffffffffffffffffffffffffffff1690565b91169081146112c05761124b61120760055473ffffffffffffffffffffffffffffffffffffffff1690565b14806112b5575b610491576040517f08c379a000000000000000000000000000000000000000000000000000000000815260206004820152601160248201527f496e76616c6964207369676e61747572650000000000000000000000000000006044820152606490fd5b50600' +
   '6544210611252565b50565b6112cb6112e0565b6111cd565b60643560ff811681036101425790565b506040513d6000823e3d90fdfea26469706673582212209f2c476079d1aff978d73487fcaa273fe91b4e1ac74949c49f0cbb8c8f072c0264736f6c634300080d0033';
 
-export async function createWallet(owner: string, chainId: string) {
-  const walletAddress = await deployWallet(owner, chainId);
-  return await window.ethereum.request({
-    method: 'wallet_invokeSnap',
-    params: [
-      defaultSnapOrigin,
-      {
-        method: 'faktoro_addWallet',
-        owner,
-        chainId,
-        network: NETWORKS[chainId]?.name,
-        walletAddress,
-      },
-    ],
-  });
-}
-
-async function deployWallet(owner: string, chainId: string) {
+export async function createWallet(
+  signer: any,
+  owner: string,
+  chainId: number,
+): Promise<WalletInfo> {
   const encoder = new ethers.utils.AbiCoder();
   const encoded = encoder.encode(
     ['address', 'address'],
     [owner, AUTHENTICATOR_ADDRESS],
   );
-  // @ts-ignore
-  const txHash: string = await window.ethereum.request({
-    method: 'eth_sendTransaction',
-    params: [
-      {
-        from: owner,
-        value: '0x00',
-        data: WALLET_BYTECODE + encoded.slice(2),
-      },
-    ],
-  });
-  console.info(`Created wallet in txHash ${txHash}`);
-  const provider = getProvider(chainId);
 
-  for (let i = 0; i < 25; i++) {
-    const receipt = await provider.getTransactionReceipt(txHash);
-    console.info('Wallet creation receipt:', receipt);
-    if (receipt !== null) {
-      return receipt.contractAddress;
-    }
-    await sleep(3300);
-  }
-  return null;
+  const tx = await signer.sendTransaction({
+    from: owner,
+    value: '0x00',
+    data: WALLET_BYTECODE + encoded.slice(2),
+  });
+  console.info(`Created wallet in txHash ${tx.hash}`);
+  const receipt = await tx.wait();
+  console.log(receipt)
+  return await storeWalletExternally(owner, receipt.contractAddress, chainId);
 }
 
-export async function fetchWallets(): Promise<WalletInfo[]> {
-  const walletsInfo = await window.ethereum.request({
-    method: 'wallet_invokeSnap',
-    params: [
-      defaultSnapOrigin,
-      {
-        method: 'faktoro_getWallets',
+async function storeWalletExternally(
+  address: string,
+  walletAddress: string,
+  chainId: number,
+): Promise<WalletInfo> {
+  console.log('registerwallet')
+  const response = await axios.post(
+    `https://us-central1-faktoro-7469a.cloudfunctions.net/registerWallet`,
+    {
+      address,
+      walletAddress,
+      chainId: chainId.toString(),
+    },
+    {
+      headers: {
+        'Content-Type': 'application/json',
       },
-    ],
-  });
-  console.log('fetched wallets', walletsInfo);
-  return walletsInfo as WalletInfo[];
+    },
+  );
+  console.info(response.data);
+  return {
+    address,
+    walletAddress,
+    chainId,
+  };
 }
-
-export const isLocalSnap = (snapId: string) => snapId.startsWith('local:');
 
 export function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));

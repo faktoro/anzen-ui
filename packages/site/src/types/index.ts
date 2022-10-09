@@ -1,7 +1,11 @@
-export { type GetSnapsResponse, type Snap } from './snap';
-
 export interface WalletInfo {
-  owner: string;
-  chainId: string;
+  address: string;
+  chainId: number;
   walletAddress: string;
+}
+
+export interface AccountDetails {
+  address: string;
+  name: string | null;
+  avatar: string | null;
 }

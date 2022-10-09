@@ -1,6 +1,6 @@
 {
-  "short_name": "template-snap",
-  "name": "The snap template",
+  "short_name": "anzen",
+  "name": "Anzen",
   "icons": [
     {
       "src": "favicon.ico",
